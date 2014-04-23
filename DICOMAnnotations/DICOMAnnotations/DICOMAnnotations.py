@@ -8,17 +8,17 @@ from __main__ import vtk, qt, ctk, slicer
 
 class DICOMAnnotations:
   def __init__(self, parent):
-    parent.title = "DICOMAnnotations" # TODO make this more human readable by adding spaces
-    parent.categories = ["Examples"]
+    parent.title = "DICOM Annotations" # TODO make this more human readable by adding spaces
+    parent.categories = ["Quantification"]
     parent.dependencies = []
-    parent.contributors = ["John Doe (AnyWare Corp.)"] # replace with "Firstname Lastname (Organization)"
+    parent.contributors = ["Alireza Mehrtash (SPL, BWH), Andrey Fedorov (SPL, BWH), Steve Pieper (Isomics)"]
     parent.helpText = """
-    This is an example of scripted loadable module bundled in an extension.
+    The DICOM Annotations module is used to get the useful meta-data information from DICOM images
+    and add display them on the corners of Slice views.
     """
     parent.acknowledgementText = """
-    This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-    and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-""" # replace with organization, grant and thanks.
+    Supported by NIH U01CA151261 (PI Fennessy) and U24 CA180918 (PIs Kikinis and Fedorov).
+    """
     self.parent = parent
 
     # Add this test to the SelfTest module's list for discovery when the module
@@ -50,6 +50,9 @@ class DICOMAnnotationsWidget:
     if not parent:
       self.setup()
       self.parent.show()
+
+    self.layoutManager = slicer.app.layoutManager()
+    self.sliceCornerAnnotations = {}
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -90,68 +93,13 @@ class DICOMAnnotationsWidget:
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     #
-    # input volume selector
+    # DICOM Annotations Checkbox
     #
-    self.inputSelector = slicer.qMRMLNodeComboBox()
-    self.inputSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.inputSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.inputSelector.selectNodeUponCreation = True
-    self.inputSelector.addEnabled = False
-    self.inputSelector.removeEnabled = False
-    self.inputSelector.noneEnabled = False
-    self.inputSelector.showHidden = False
-    self.inputSelector.showChildNodeTypes = False
-    self.inputSelector.setMRMLScene( slicer.mrmlScene )
-    self.inputSelector.setToolTip( "Pick the input to the algorithm." )
-    parametersFormLayout.addRow("Input Volume: ", self.inputSelector)
-
-    #
-    # output volume selector
-    #
-    self.outputSelector = slicer.qMRMLNodeComboBox()
-    self.outputSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.outputSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.outputSelector.selectNodeUponCreation = False
-    self.outputSelector.addEnabled = True
-    self.outputSelector.removeEnabled = True
-    self.outputSelector.noneEnabled = False
-    self.outputSelector.showHidden = False
-    self.outputSelector.showChildNodeTypes = False
-    self.outputSelector.setMRMLScene( slicer.mrmlScene )
-    self.outputSelector.setToolTip( "Pick the output to the algorithm." )
-    parametersFormLayout.addRow("Output Volume: ", self.outputSelector)
-
-    #
-    # check box to trigger taking screen shots for later use in tutorials
-    #
-    self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
-    self.enableScreenshotsFlagCheckBox.checked = 0
-    self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
-    parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
-
-    #
-    # scale factor for screen shots
-    #
-    self.screenshotScaleFactorSliderWidget = ctk.ctkSliderWidget()
-    self.screenshotScaleFactorSliderWidget.singleStep = 1.0
-    self.screenshotScaleFactorSliderWidget.minimum = 1.0
-    self.screenshotScaleFactorSliderWidget.maximum = 50.0
-    self.screenshotScaleFactorSliderWidget.value = 1.0
-    self.screenshotScaleFactorSliderWidget.setToolTip("Set scale factor for the screen shots.")
-    parametersFormLayout.addRow("Screenshot scale factor", self.screenshotScaleFactorSliderWidget)
-
-    #
-    # Apply Button
-    #
-    self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Run the algorithm."
-    self.applyButton.enabled = False
-    parametersFormLayout.addRow(self.applyButton)
+    self.dicomAnnotationsCheckBox = qt.QCheckBox('DICOM Annotations')
+    parametersFormLayout.addRow(self.dicomAnnotationsCheckBox)
+    self.dicomAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
 
     # connections
-    self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    self.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -159,15 +107,144 @@ class DICOMAnnotationsWidget:
   def cleanup(self):
     pass
 
-  def onSelect(self):
-    self.applyButton.enabled = self.inputSelector.currentNode() and self.outputSelector.currentNode()
+  def updateSliceViewFromGUI(self):
 
-  def onApplyButton(self):
-    logic = DICOMAnnotationsLogic()
-    enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    screenshotScaleFactor = int(self.screenshotScaleFactorSliderWidget.value)
-    print("Run the algorithm")
-    logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), enableScreenshotsFlag,screenshotScaleFactor)
+    # Create corner annotations if have not created already
+    if len(self.sliceCornerAnnotations.items()) == 0:
+      self.createCornerAnnotations()
+
+    if self.dicomAnnotationsCheckBox.checked:
+      for sliceViewName in self.sliceViewNames:
+        sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
+        sl = sliceWidget.sliceLogic()
+        bl =sl.GetBackgroundLayer()
+        self.makeAnnotationText(bl)
+    else:
+      for sliceViewName in self.sliceViewNames:
+        self.sliceCornerAnnotations[sliceViewName].SetText(0, "")
+        self.sliceCornerAnnotations[sliceViewName].SetText(1, "")
+        self.sliceCornerAnnotations[sliceViewName].SetText(2, "")
+        self.sliceCornerAnnotations[sliceViewName].SetText(3, "")
+        self.sliceViews[sliceViewName].scheduleRender()
+
+  def createCornerAnnotations(self):
+
+    self.sliceViewNames = []
+    self.sliceWidgets = {}
+    self.sliceViews = {}
+    self.blNodeObserverTag = {}
+    self.sliceCornerAnnotations = {}
+
+    self.sliceViewNames = self.layoutManager.sliceViewNames()
+    for sliceViewName in self.sliceViewNames:
+      sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
+      self.sliceWidgets[sliceViewName] = sliceWidget
+      sliceView = sliceWidget.sliceView()
+      self.sliceViews[sliceViewName] = sliceView
+      self.sliceCornerAnnotations[sliceViewName] = sliceView.cornerAnnotation()
+      self.sliceCornerAnnotations[sliceViewName].SetMaximumFontSize(14)
+      self.sliceCornerAnnotations[sliceViewName].SetMinimumFontSize(14)
+      textProperty = self.sliceCornerAnnotations[sliceViewName].GetTextProperty()
+      textProperty.SetFontFamilyToTimes()
+      sl = sliceWidget.sliceLogic()
+      bl = sl.GetBackgroundLayer()
+      self.blNodeObserverTag[sliceViewName] = bl.AddObserver(vtk.vtkCommand.ModifiedEvent, 
+                                              self.updateCornerAnnotations)
+
+  def updateCornerAnnotations(self,caller,event):
+    self.makeAnnotationText(caller)
+
+  def makeAnnotationText(self, backgroundLayout):
+    sliceNode = backgroundLayout.GetSliceNode()
+    sliceViewName = sliceNode.GetLayoutName()
+
+    topLeftAnnotation = ''
+    topRightAnnotation = ''
+    volumeNode = backgroundLayout.GetVolumeNode()
+    if volumeNode:
+      uids = volumeNode.GetAttribute('DICOM.instanceUIDs')
+      if uids:
+        uid = uids.partition(' ')[0]
+        p = self.extractDICOMValues(uid)
+
+        topRightLines =  []
+        topRightLines.append(p['Patient Name'].replace('^',', '))
+        if p['Patient Birth Date'] != 'Unknown':
+          p['Patient Birth Date'] = p['Patient Birth Date'][4:6] + '/' + p['Patient Birth Date'][6:]+ '/' + p['Patient Birth Date'][:4]
+        topRightLines.append(p['Patient Birth Date'] + ', ' + p['Patient Age'] + ', ' + p['Patient Sex'])
+        if p['Series Date'] != 'Unknown':
+          topRightLines.append(p['Series Date'][4:6] + '/' + p['Series Date'][6:]+ '/' + p['Series Date'][:4])
+        else:
+          topRightLines.append(p['Series Date'])
+        if p['Series Time'] != 'Unknown':
+          topRightLines.append(p['Series Time'][:2] + ':' + p['Series Time'][2:4] + ':' + p['Series Time'][4:6])
+        else:
+          topRightLines.append(p['Series Time'])
+        topRightLines.append('Study ID: ' + p['Study ID'])
+
+        sliceHeight = self.sliceWidgets[sliceViewName].height
+
+        if  sliceHeight < 300:
+          topLineNumbers = 1
+        elif 300 < sliceHeight < 320:
+          topLineNumbers = 2
+        elif 320 < sliceHeight < 340:
+          topLineNumbers = 3
+        elif 340 < sliceHeight < 360:
+          topLineNumbers = 4
+        else:
+          topLineNumbers = 10
+
+        for lineNumber, line in enumerate(topRightLines):
+          if lineNumber < topLineNumbers:
+            topRightAnnotation = topRightAnnotation + line + '\n'
+
+
+        if self.sliceWidgets[sliceViewName].width > 600:
+          #topLeftAnnotation = p['Institution Name'] +'\n' + p['Referring Physician Name'].replace('^',', ')
+          topLeftLines =  []
+          topLeftLines.append(p['Institution Name'])
+          topLeftLines.append(p['Referring Physician Name'].replace('^',', '))
+          topLeftLines.append(p['Manufacturer'])
+          topLeftLines.append(p['Model'])
+          for lineNumber, line in enumerate(topLeftLines):
+            if lineNumber < topLineNumbers:
+              topLeftAnnotation = topLeftAnnotation + line + '\n'
+
+    self.sliceCornerAnnotations[sliceViewName].SetText(2, topRightAnnotation)
+    self.sliceCornerAnnotations[sliceViewName].SetText(3, topLeftAnnotation)
+    self.sliceViews[sliceViewName].scheduleRender()
+
+  def extractDICOMValues(self,uid):
+    slicer.dicomDatabase.loadInstanceHeader(uid)
+    p ={}
+    tags = {
+    "0008,0080": "Institution Name",
+    "0008,0090": "Referring Physician Name",
+    "0010,0010": "Patient Name",
+    "0010,0020": "Patient ID",
+    "0010,0030": "Patient Birth Date",
+    "0010,0040": "Patient Sex",
+    "0010,1010": "Patient Age",
+    "0010,4000": "Patient Comments",
+    "0018,1030": "Protocol Name",
+    "0020,0010": "Study ID",
+    "0008,0021": "Series Date",
+    "0008,0031": "Series Time",
+    "0008,1030": "Study Description",
+    "0008,0060": "Modality",
+    "0008,0070": "Manufacturer",
+    "0008,1090": "Model"
+    }
+    for tag in tags.keys():
+      dump = slicer.dicomDatabase.headerValue(tag)
+      try:
+        value = dump[dump.index('[')+1:dump.index(']')]
+      except ValueError:
+        value = "Unknown"
+      p[tags[tag]] = value
+
+    return p
 
   def onReload(self,moduleName="DICOMAnnotations"):
     """Generic reload method for any scripted module.
@@ -227,58 +304,6 @@ class DICOMAnnotationsLogic:
     self.infoLayout.addWidget(self.label)
     qt.QTimer.singleShot(msec, self.info.close)
     self.info.exec_()
-
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    self.delayDisplay(description)
-
-    if self.enableScreenshots == 0:
-      return
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == -1:
-      # full window
-      widget = slicer.util.mainWindow()
-    elif type == slicer.qMRMLScreenShotDialog().FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog().ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog().Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog().Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog().Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-
-    # grab and convert to vtk image data
-    qpixMap = qt.QPixmap().grabWidget(widget)
-    qimage = qpixMap.toImage()
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, self.screenshotScaleFactor, imageData)
-
-  def run(self,inputVolume,outputVolume,enableScreenshots=0,screenshotScaleFactor=1):
-    """
-    Run the actual algorithm
-    """
-
-    self.delayDisplay('Running the aglorithm')
-
-    self.enableScreenshots = enableScreenshots
-    self.screenshotScaleFactor = screenshotScaleFactor
-
-    self.takeScreenshot('DICOMAnnotations-Start','Start',-1)
-
-    return True
 
 
 class DICOMAnnotationsTest(unittest.TestCase):
