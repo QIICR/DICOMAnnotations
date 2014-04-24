@@ -51,6 +51,11 @@ class DICOMAnnotationsWidget:
       self.setup()
       self.parent.show()
 
+    self.topRightAnnotationDisplay = True
+    self.topLeftAnnotationDisplay = True
+    self.bottomRightAnnotationDisplay = True
+    self.bottomLeftAnnotationDisplay = True
+
     self.layoutManager = slicer.app.layoutManager()
     self.sliceCornerAnnotations = {}
 
@@ -95,14 +100,64 @@ class DICOMAnnotationsWidget:
     #
     # DICOM Annotations Checkbox
     #
-    self.dicomAnnotationsCheckBox = qt.QCheckBox('DICOM Annotations')
+    self.dicomAnnotationsCheckBox = qt.QCheckBox('DICOM Slice Annotations')
     parametersFormLayout.addRow(self.dicomAnnotationsCheckBox)
-    self.dicomAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
+
+    #
+    # Corner Annotations Activation Checkboxes
+    #
+    self.cornerActivationsGroupBox = ctk.ctkCollapsibleGroupBox()
+    self.cornerActivationsGroupBox.setTitle('Active Corners')
+    self.cornerActivationsGroupBox.enabled = False
+    parametersFormLayout.addRow(self.cornerActivationsGroupBox)
+    cornerActionHBoxLayout = qt.QHBoxLayout(self.cornerActivationsGroupBox)
+
+    self.cornerActivationCheckbox = []
+
+    for i in xrange(4):
+      self.cornerActivationCheckbox.append(qt.QCheckBox())
+      self.cornerActivationCheckbox[i].checked = True
+      cornerActionHBoxLayout.addWidget(self.cornerActivationCheckbox[i])
+      self.cornerActivationCheckbox[i].connect('clicked()', self.updateSliceViewFromGUI)
+
+    self.cornerActivationCheckbox[0].setText('Top Left')
+    self.cornerActivationCheckbox[1].setText('Top Right')
+    self.cornerActivationCheckbox[2].setText('Bottom Left')
+    self.cornerActivationCheckbox[3].setText('Bottom Right')
+
+    #
+    # Corner Annotations Font Properties
+    #
+    self.fontPropertiesGroupBox = ctk.ctkCollapsibleGroupBox()
+    self.fontPropertiesGroupBox.setTitle('Font Properties')
+    self.fontPropertiesGroupBox.enabled = False
+    parametersFormLayout.addRow(self.fontPropertiesGroupBox)
+    fontPropertiesHBoxLayout = qt.QHBoxLayout(self.fontPropertiesGroupBox)
+
+    fontFamilyLabel = qt.QLabel('Font Family: ')
+    fontPropertiesHBoxLayout.addWidget(fontFamilyLabel)
+    self.timesFontRadioButton = qt.QRadioButton('Times')
+    fontPropertiesHBoxLayout.addWidget(self.timesFontRadioButton)
+    self.timesFontRadioButton.connect('clicked()', self.updateSliceViewFromGUI)
+    self.timesFontRadioButton.checked = True
+    self.arialFontRadioButton = qt.QRadioButton('Arial')
+    self.arialFontRadioButton.connect('clicked()', self.updateSliceViewFromGUI)
+    fontPropertiesHBoxLayout.addWidget(self.arialFontRadioButton)
+
+    fontSizeLabel = qt.QLabel('Font Size: ')
+    fontPropertiesHBoxLayout.addWidget(fontSizeLabel)
+    self.fontSizeSpinBox = qt.QSpinBox()
+    self.fontSizeSpinBox.setMinimum(10)
+    self.fontSizeSpinBox.setMaximum(20)
+    self.fontSizeSpinBox.value = 14
+    fontPropertiesHBoxLayout.addWidget(self.fontSizeSpinBox)
+    self.fontSizeSpinBox.connect('valueChanged(int)', self.updateSliceViewFromGUI)
 
     # connections
 
     # Add vertical spacer
     self.layout.addStretch(1)
+    self.dicomAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
 
   def cleanup(self):
     pass
@@ -113,13 +168,56 @@ class DICOMAnnotationsWidget:
     if len(self.sliceCornerAnnotations.items()) == 0:
       self.createCornerAnnotations()
 
+    if self.timesFontRadioButton.checked:
+      fontFamily = 'Times'
+    else:
+      fontFamily = 'Arial'
+
+    fontSize = self.fontSizeSpinBox.value
+
+    for sliceViewName in self.sliceViewNames:
+      cornerAnnotation = self.sliceCornerAnnotations[sliceViewName]
+      cornerAnnotation.SetMaximumFontSize(fontSize)
+      cornerAnnotation.SetMinimumFontSize(fontSize)
+      textProperty = cornerAnnotation.GetTextProperty()
+      if fontFamily == 'Times':
+        textProperty.SetFontFamilyToTimes()
+      else:
+        textProperty.SetFontFamilyToArial()
+
+    if self.cornerActivationCheckbox[0].checked:
+      self.topLeftAnnotationDisplay = True
+    else:
+      self.topLeftAnnotationDisplay = False
+
+    if self.cornerActivationCheckbox[1].checked:
+      self.topRightAnnotationDisplay = True
+    else:
+      self.topRightAnnotationDisplay = False
+
+    if self.cornerActivationCheckbox[2].checked:
+      self.bottomLeftAnnotationDisplay = True
+    else:
+      self.bottomLeftAnnotationDisplay = False
+
+    if self.cornerActivationCheckbox[3].checked:
+      self.bottomRightAnnotationDisplay = True
+    else:
+      self.bottomRightAnnotationDisplay = False
+
     if self.dicomAnnotationsCheckBox.checked:
+      self.cornerActivationsGroupBox.enabled = True
+      self.fontPropertiesGroupBox.enabled = True
+
       for sliceViewName in self.sliceViewNames:
         sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
         sl = sliceWidget.sliceLogic()
         bl =sl.GetBackgroundLayer()
         self.makeAnnotationText(bl)
     else:
+      self.cornerActivationsGroupBox.enabled = False
+      self.fontPropertiesGroupBox.enabled = False
+
       for sliceViewName in self.sliceViewNames:
         self.sliceCornerAnnotations[sliceViewName].SetText(0, "")
         self.sliceCornerAnnotations[sliceViewName].SetText(1, "")
@@ -142,10 +240,6 @@ class DICOMAnnotationsWidget:
       sliceView = sliceWidget.sliceView()
       self.sliceViews[sliceViewName] = sliceView
       self.sliceCornerAnnotations[sliceViewName] = sliceView.cornerAnnotation()
-      self.sliceCornerAnnotations[sliceViewName].SetMaximumFontSize(14)
-      self.sliceCornerAnnotations[sliceViewName].SetMinimumFontSize(14)
-      textProperty = self.sliceCornerAnnotations[sliceViewName].GetTextProperty()
-      textProperty.SetFontFamilyToTimes()
       sl = sliceWidget.sliceLogic()
       bl = sl.GetBackgroundLayer()
       self.blNodeObserverTag[sliceViewName] = bl.AddObserver(vtk.vtkCommand.ModifiedEvent, 
@@ -167,23 +261,8 @@ class DICOMAnnotationsWidget:
         uid = uids.partition(' ')[0]
         p = self.extractDICOMValues(uid)
 
-        topRightLines =  []
-        topRightLines.append(p['Patient Name'].replace('^',', '))
-        if p['Patient Birth Date'] != 'Unknown':
-          p['Patient Birth Date'] = p['Patient Birth Date'][4:6] + '/' + p['Patient Birth Date'][6:]+ '/' + p['Patient Birth Date'][:4]
-        topRightLines.append(p['Patient Birth Date'] + ', ' + p['Patient Age'] + ', ' + p['Patient Sex'])
-        if p['Series Date'] != 'Unknown':
-          topRightLines.append(p['Series Date'][4:6] + '/' + p['Series Date'][6:]+ '/' + p['Series Date'][:4])
-        else:
-          topRightLines.append(p['Series Date'])
-        if p['Series Time'] != 'Unknown':
-          topRightLines.append(p['Series Time'][:2] + ':' + p['Series Time'][2:4] + ':' + p['Series Time'][4:6])
-        else:
-          topRightLines.append(p['Series Time'])
-        topRightLines.append('Study ID: ' + p['Study ID'])
-
+        topLineNumbers = 10
         sliceHeight = self.sliceWidgets[sliceViewName].height
-
         if  sliceHeight < 300:
           topLineNumbers = 1
         elif 300 < sliceHeight < 320:
@@ -192,27 +271,41 @@ class DICOMAnnotationsWidget:
           topLineNumbers = 3
         elif 340 < sliceHeight < 360:
           topLineNumbers = 4
-        else:
-          topLineNumbers = 10
 
-        for lineNumber, line in enumerate(topRightLines):
-          if lineNumber < topLineNumbers:
-            topRightAnnotation = topRightAnnotation + line + '\n'
-
-
-        if self.sliceWidgets[sliceViewName].width > 600:
-          #topLeftAnnotation = p['Institution Name'] +'\n' + p['Referring Physician Name'].replace('^',', ')
+        if self.topLeftAnnotationDisplay:
           topLeftLines =  []
-          topLeftLines.append(p['Institution Name'])
-          topLeftLines.append(p['Referring Physician Name'].replace('^',', '))
-          topLeftLines.append(p['Manufacturer'])
-          topLeftLines.append(p['Model'])
+          topLeftLines.append(p['Patient Name'].replace('^',', '))
+          if p['Patient Birth Date'] != 'Unknown':
+            p['Patient Birth Date'] = p['Patient Birth Date'][4:6] + '/' + p['Patient Birth Date'][6:]+ '/' + p['Patient Birth Date'][:4]
+          topLeftLines.append(p['Patient Birth Date'] + ', ' + p['Patient Age'] + ', ' + p['Patient Sex'])
+          if p['Series Date'] != 'Unknown':
+            topLeftLines.append(p['Series Date'][4:6] + '/' + p['Series Date'][6:]+ '/' + p['Series Date'][:4])
+          else:
+            topLeftLines.append(p['Series Date'])
+          if p['Series Time'] != 'Unknown':
+            topLeftLines.append(p['Series Time'][:2] + ':' + p['Series Time'][2:4] + ':' + p['Series Time'][4:6])
+          else:
+            topLeftLines.append(p['Series Time'])
+          topLeftLines.append('Study ID: ' + p['Study ID'])
+
           for lineNumber, line in enumerate(topLeftLines):
             if lineNumber < topLineNumbers:
               topLeftAnnotation = topLeftAnnotation + line + '\n'
 
-    self.sliceCornerAnnotations[sliceViewName].SetText(2, topRightAnnotation)
-    self.sliceCornerAnnotations[sliceViewName].SetText(3, topLeftAnnotation)
+
+        if (self.sliceWidgets[sliceViewName].width > 600 and self.topRightAnnotationDisplay):
+          #topLeftAnnotation = p['Institution Name'] +'\n' + p['Referring Physician Name'].replace('^',', ')
+          topRightLines =  []
+          topRightLines.append(p['Institution Name'])
+          topRightLines.append(p['Referring Physician Name'].replace('^',', '))
+          topRightLines.append(p['Manufacturer'])
+          topRightLines.append(p['Model'])
+          for lineNumber, line in enumerate(topRightLines):
+            if lineNumber < topLineNumbers:
+              topRightAnnotation = topRightAnnotation + line + '\n'
+
+    self.sliceCornerAnnotations[sliceViewName].SetText(2, topLeftAnnotation)
+    self.sliceCornerAnnotations[sliceViewName].SetText(3, topRightAnnotation)
     self.sliceViews[sliceViewName].scheduleRender()
 
   def extractDICOMValues(self,uid):
