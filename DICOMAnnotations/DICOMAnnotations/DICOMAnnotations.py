@@ -426,8 +426,6 @@ class DICOMAnnotationsWidget:
         except ValueError:
           value = "Unknown"
         p[tags[tag]] = value
-        print tag
-        print value
     return p
   
   def onReload(self,moduleName="DICOMAnnotations"):
