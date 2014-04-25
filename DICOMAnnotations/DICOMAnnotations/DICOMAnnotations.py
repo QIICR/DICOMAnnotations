@@ -51,10 +51,10 @@ class DICOMAnnotationsWidget:
       self.setup()
       self.parent.show()
 
-    self.topRightAnnotationDisplay = True
     self.topLeftAnnotationDisplay = True
-    self.bottomRightAnnotationDisplay = True
+    self.topRightAnnotationDisplay = True
     self.bottomLeftAnnotationDisplay = True
+    self.bottomRightAnnotationDisplay = True
 
     self.layoutManager = slicer.app.layoutManager()
     self.sliceCornerAnnotations = {}
@@ -252,8 +252,10 @@ class DICOMAnnotationsWidget:
     sliceNode = backgroundLayout.GetSliceNode()
     sliceViewName = sliceNode.GetLayoutName()
 
+    bottomLeftAnnotation   = ''
     topLeftAnnotation = ''
     topRightAnnotation = ''
+
     volumeNode = backgroundLayout.GetVolumeNode()
     if volumeNode:
       uids = volumeNode.GetAttribute('DICOM.instanceUIDs')
@@ -272,48 +274,119 @@ class DICOMAnnotationsWidget:
         elif 340 < sliceHeight < 360:
           topLineNumbers = 4
 
+        #
+        # Top Left Corner Annotations including:
+        # Patient Name
+        # Patient ID
+        # Patient Birthdate, Age, Sex
+        # Series Date
+        # Series Time
+        # Study ID
+        # Study Description
+
         if self.topLeftAnnotationDisplay:
           topLeftLines =  []
           topLeftLines.append(p['Patient Name'].replace('^',', '))
-          if p['Patient Birth Date'] != 'Unknown':
-            p['Patient Birth Date'] = p['Patient Birth Date'][4:6] + '/' + p['Patient Birth Date'][6:]+ '/' + p['Patient Birth Date'][:4]
+          topLeftLines.append('ID: ' + p['Patient ID'])
+          val = p['Patient Birth Date']
+          if val != 'Unknown':
+            val = val[4:6] + '/' + val[6:]+ '/' + val[:4]
           topLeftLines.append(p['Patient Birth Date'] + ', ' + p['Patient Age'] + ', ' + p['Patient Sex'])
-          if p['Series Date'] != 'Unknown':
-            topLeftLines.append(p['Series Date'][4:6] + '/' + p['Series Date'][6:]+ '/' + p['Series Date'][:4])
+          val = p['Series Date']
+          if  val != 'Unknown':
+            topLeftLines.append(val[4:6] + '/' + val[6:]+ '/' + val[:4])
           else:
-            topLeftLines.append(p['Series Date'])
-          if p['Series Time'] != 'Unknown':
-            topLeftLines.append(p['Series Time'][:2] + ':' + p['Series Time'][2:4] + ':' + p['Series Time'][4:6])
-          else:
-            topLeftLines.append(p['Series Time'])
+            topLeftLines.append(val)
+          val = p['Series Time']
+          if  val != 'Unknown':
+            studyH = val[:2]
+            if int(studyH) > 12 :
+              studyH = str (int(studyH) - 12)
+              clockTime = ' PM'
+            else:
+              studyH = studyH
+              clockTime = ' AM'
+            studyM = val[2:4]
+            studyS = val[4:6]
+            topLeftLines.append( studyH + ':' + studyM  + ':' + studyS +clockTime)
           topLeftLines.append('Study ID: ' + p['Study ID'])
+          topLeftLines.append(p['Study Description'])
 
           for lineNumber, line in enumerate(topLeftLines):
             if lineNumber < topLineNumbers:
               topLeftAnnotation = topLeftAnnotation + line + '\n'
 
+        #
+        # Top Right Corner Annotations including:
+        # Institution Name
+        # Referring Physicians Name
+        # Manufacturerer
+        # Model
+        # Patient Position
+        #
 
         if (self.sliceWidgets[sliceViewName].width > 600 and self.topRightAnnotationDisplay):
           #topLeftAnnotation = p['Institution Name'] +'\n' + p['Referring Physician Name'].replace('^',', ')
           topRightLines =  []
-          topRightLines.append(p['Institution Name'])
-          topRightLines.append(p['Referring Physician Name'].replace('^',', '))
-          topRightLines.append(p['Manufacturer'])
-          topRightLines.append(p['Model'])
+          val = p['Institution Name']
+          if val != 'Unknown':
+            topRightLines.append(val)
+          val = p['Referring Physician Name']
+          if val != 'Unknown':
+            topRightLines.append('Ref: ' + val.replace('^',', '))
+          val = p['Manufacturer']
+          if val != 'Unknown':
+            topRightLines.append(val)
+          val = p['Model']
+          if val != 'Unknown':
+            topRightLines.append(val)
+          val = p['Patient Position']
+          if val != 'Unknown':
+            topRightLines.append(val)
+
           for lineNumber, line in enumerate(topRightLines):
             if lineNumber < topLineNumbers:
               topRightAnnotation = topRightAnnotation + line + '\n'
 
-    self.sliceCornerAnnotations[sliceViewName].SetText(2, topLeftAnnotation)
-    self.sliceCornerAnnotations[sliceViewName].SetText(3, topRightAnnotation)
+        #
+        # Bottom Left Corner Annotations:
+        # Modality Specific and Image Comments
+        #
+        if self.bottomLeftAnnotationDisplay:
+          bottomLeftLines =  []
+          modality = p['Modality']
+          if modality == 'MR':
+            bottomLeftLines.append('TR ' + p['Repetition Time'])
+            bottomLeftLines.append('TE ' + p['Echo Time'])
+          '''
+          These values are not available in dicom tag cache now
+          if modality == 'CT':
+            bottomLeftLines.append('mAs ' + p['Exposure'])
+            bottomLeftLines.append('KVP ' + p['KVP'])
+          if (p['Image Comments'] != 'Unknown'):
+            bottomLeftLines.append(p['Image Comments'][:12])
+          '''
+          for line in bottomLeftLines:
+              bottomLeftAnnotation = bottomLeftAnnotation + line + '\n'
+
+    sliceCornerAnnotation = self.sliceCornerAnnotations[sliceViewName]
+    sliceCornerAnnotation.SetText(0, bottomLeftAnnotation)
+    sliceCornerAnnotation.SetText(2, topLeftAnnotation)
+    sliceCornerAnnotation.SetText(3, topRightAnnotation)
     self.sliceViews[sliceViewName].scheduleRender()
 
   def extractDICOMValues(self,uid):
-    slicer.dicomDatabase.loadInstanceHeader(uid)
     p ={}
+    slicer.dicomDatabase.loadInstanceHeader(uid)
     tags = {
+    "0008,0021": "Series Date",
+    "0008,0031": "Series Time",
+    "0008,0060": "Modality",
+    "0008,0070": "Manufacturer",
     "0008,0080": "Institution Name",
     "0008,0090": "Referring Physician Name",
+    "0008,1030": "Study Description",
+    "0008,1090": "Model",
     "0010,0010": "Patient Name",
     "0010,0020": "Patient ID",
     "0010,0030": "Patient Birth Date",
@@ -321,24 +394,42 @@ class DICOMAnnotationsWidget:
     "0010,1010": "Patient Age",
     "0010,4000": "Patient Comments",
     "0018,1030": "Protocol Name",
+    "0018,5100": "Patient Position",
     "0020,0010": "Study ID",
-    "0008,0021": "Series Date",
-    "0008,0031": "Series Time",
-    "0008,1030": "Study Description",
-    "0008,0060": "Modality",
-    "0008,0070": "Manufacturer",
-    "0008,1090": "Model"
+    "0020,4000": "Image Comments"
     }
-    for tag in tags.keys():
-      dump = slicer.dicomDatabase.headerValue(tag)
-      try:
-        value = dump[dump.index('[')+1:dump.index(']')]
-      except ValueError:
-        value = "Unknown"
-      p[tags[tag]] = value
+    p = self.extractTagValue(p, tags)
+    if self.bottomLeftAnnotationDisplay:
+      if p['Modality'] == 'MR':
+        mrTags = {
+        "0018,0080": "Repetition Time",
+        "0018,0081": "Echo Time"
+        }
+        p = self.extractTagValue(p, mrTags)
 
+      '''
+      These tags are not available in dicom tag cache now
+      if p['Modality'] == 'CT':
+        ctTags = {
+        "0018,0060": "KVP",
+        "0018,1152": "Exposure"
+        }
+        p = self.extractTagValue(p, ctTags)
+      '''
     return p
 
+  def extractTagValue(self,p,tags):
+    for tag in tags.keys():
+        dump = slicer.dicomDatabase.headerValue(tag)
+        try:
+          value = dump[dump.index('[')+1:dump.index(']')]
+        except ValueError:
+          value = "Unknown"
+        p[tags[tag]] = value
+        print tag
+        print value
+    return p
+  
   def onReload(self,moduleName="DICOMAnnotations"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
