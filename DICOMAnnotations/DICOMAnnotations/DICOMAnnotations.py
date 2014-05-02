@@ -51,6 +51,14 @@ class DICOMAnnotationsWidget:
       self.setup()
       self.parent.show()
 
+    self.backgroundVolumeName = 'None'
+    self.foregroundVolumeName = 'None'
+    self.labelVolumeName = 'None'
+    self.backgroundDicomDic = {}
+    self.foregroundDicomDic = {}
+    self.topLeftLines =  ['']*7
+    self.topRightLines =  ['']*5
+
     self.topLeftAnnotationDisplay = True
     self.topRightAnnotationDisplay = True
     self.bottomLeftAnnotationDisplay = True
@@ -212,8 +220,8 @@ class DICOMAnnotationsWidget:
       for sliceViewName in self.sliceViewNames:
         sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
         sl = sliceWidget.sliceLogic()
-        bl =sl.GetBackgroundLayer()
-        self.makeAnnotationText(bl)
+        #bl =sl.GetBackgroundLayer()
+        self.makeAnnotationText(sl)
     else:
       self.cornerActivationsGroupBox.enabled = False
       self.fontPropertiesGroupBox.enabled = False
@@ -231,6 +239,7 @@ class DICOMAnnotationsWidget:
     self.sliceWidgets = {}
     self.sliceViews = {}
     self.blNodeObserverTag = {}
+    sliceLogicObserverTag = {}
     self.sliceCornerAnnotations = {}
 
     self.sliceViewNames = self.layoutManager.sliceViewNames()
@@ -242,37 +251,141 @@ class DICOMAnnotationsWidget:
       self.sliceCornerAnnotations[sliceViewName] = sliceView.cornerAnnotation()
       sl = sliceWidget.sliceLogic()
       bl = sl.GetBackgroundLayer()
-      self.blNodeObserverTag[sliceViewName] = bl.AddObserver(vtk.vtkCommand.ModifiedEvent, 
+
+      sliceLogicObserverTag[sliceViewName] = sl.AddObserver(vtk.vtkCommand.ModifiedEvent, 
                                               self.updateCornerAnnotations)
 
   def updateCornerAnnotations(self,caller,event):
     self.makeAnnotationText(caller)
 
-  def makeAnnotationText(self, backgroundLayout):
-    sliceNode = backgroundLayout.GetSliceNode()
+  def sliceLogicModifiedEvent(self, caller, event):
+    self.updateLayersAnnotation(caller)
+
+  def makeLayersAnnotation(self, sliceLogic):
+    foregroundOpacity = sliceLogic.GetForegroundOpacity()
+    backgroundLayer = sliceLogic.GetBackgroundLayer()
+    sliceNode = backgroundLayer.GetSliceNode()
     sliceViewName = sliceNode.GetLayoutName()
+
+    backgroundVolume = backgroundLayer.GetVolumeNode()
+    backgroundVolumeName = backgroundVolume.GetName()
+
+    foregroundLayer = sliceLogic.GetBackgroundLayer()
+    foregroundVolume = foregroundLayer.GetVolumeNode()
+    foregroundVolumeName = foregroundVolume.GetName()
+
+    bottomLeftAnnotation   = ''
+
+    bottomLeftLines = []
+    bottomLeftLines.append('Bg: '+ backgroundVolumeName)
+    bottomLeftLines.append('Fg: '+ foregroundVolumeName)
+
+    for lineNumber, line in enumerate(bottomLeftLines):
+      if lineNumber < bottomLeftLines:
+        bottomLeftAnnotation = bottomLeftAnnotation + line + '\n'
+
+    sliceCornerAnnotation = self.sliceCornerAnnotations[sliceViewName]
+    sliceCornerAnnotation.SetText(0, bottomLeftAnnotation)
+    self.sliceViews[sliceViewName].scheduleRender()
+
+  def makeAnnotationText(self, sliceLogic):
+
+    backgroundLayer = sliceLogic.GetBackgroundLayer()
+    foregroundLayer = sliceLogic.GetForegroundLayer()
+
+    sliceNode = backgroundLayer.GetSliceNode()
+    sliceViewName = sliceNode.GetLayoutName()
+
+    backgroundVolume = backgroundLayer.GetVolumeNode()
+    '''
+    backgroundVolumeName = backgroundVolume.GetName()
+
+    foregroundVolumeName = ''
+    foregroundVolume = foregroundLayer.GetVolumeNode()
+    foregroundVolumeName = foregroundVolume.GetName()
+
+    sliceNode = backgroundLayer.GetSliceNode()
 
     bottomLeftAnnotation   = ''
     topLeftAnnotation = ''
     topRightAnnotation = ''
+    '''
 
-    volumeNode = backgroundLayout.GetVolumeNode()
-    if volumeNode:
-      uids = volumeNode.GetAttribute('DICOM.instanceUIDs')
-      if uids:
-        uid = uids.partition(' ')[0]
-        p = self.extractDICOMValues(uid)
+    backgroundVolumeNode = backgroundLayer.GetVolumeNode()
+    if backgroundVolumeNode:
+      self.foo(sliceLogic,backgroundVolumeNode,'background')
+    else:
+      self.backgroundVolumeName = 'None'
+      self.backgroundDicomDic = {}
+      self.topLeftLines =  ['']*7
+      self.topRightLines =  ['']*5
 
-        topLineNumbers = 10
-        sliceHeight = self.sliceWidgets[sliceViewName].height
-        if  sliceHeight < 300:
-          topLineNumbers = 1
-        elif 300 < sliceHeight < 320:
-          topLineNumbers = 2
-        elif 320 < sliceHeight < 340:
-          topLineNumbers = 3
-        elif 340 < sliceHeight < 360:
-          topLineNumbers = 4
+    foregroundVolumeNode = foregroundLayer.GetVolumeNode()
+    if foregroundVolumeNode:
+      self.foo(sliceLogic,foregroundVolumeNode,'foreground')
+    else:
+      self.foregroundVolumeName = 'None'
+      self.foregroundDicomDic = {}
+      self.topLeftLines =  ['']*7
+      self.topRightLines =  ['']*5
+
+    labelLayer = sliceLogic.GetLabelLayer()
+    labelVolumeNode = labelLayer.GetVolumeNode()
+    if labelVolumeNode:
+      self.foo(sliceLogic,labelVolumeNode,'label')
+    else:
+      self.labelVolumeName = 'None'
+    '''
+    bottomLeftLines = []
+    bottomLeftLines.append('Bg: '+ backgroundVolumeName)
+    bottomLeftLines.append('Fg: '+ foregroundVolumeName)
+
+    for lineNumber, line in enumerate(bottomLeftLines):
+      if lineNumber < bottomLeftLines:
+        bottomLeftAnnotation = bottomLeftAnnotation + line + '\n'
+
+    sliceCornerAnnotation = self.sliceCornerAnnotations[sliceViewName]
+    sliceCornerAnnotation.SetText(0, bottomLeftAnnotation)
+    sliceCornerAnnotation.SetText(2, topLeftAnnotation)
+    sliceCornerAnnotation.SetText(3, topRightAnnotation)
+    self.sliceViews[sliceViewName].scheduleRender()
+    '''
+
+  def foo(self, sliceLogic, volumeNode, role):
+
+    backgroundLayer = sliceLogic.GetBackgroundLayer()
+    sliceNode = backgroundLayer.GetSliceNode()
+    sliceViewName = sliceNode.GetLayoutName()
+
+    sliceCompositeNode = sliceLogic.GetSliceCompositeNode()
+    foregroundOpacity = sliceCompositeNode.GetForegroundOpacity()
+    labelOpacity = sliceCompositeNode.GetLabelOpacity()
+
+    bottomLeftAnnotation   = ''
+    bottomRightAnnotation   = ''
+    topLeftAnnotation = ''
+    topRightAnnotation = ''
+
+    uids = volumeNode.GetAttribute('DICOM.instanceUIDs')
+    if uids:
+      uid = uids.partition(' ')[0]
+
+      topLineNumbers = 10
+      sliceHeight = self.sliceWidgets[sliceViewName].height
+      if  sliceHeight < 300:
+        topLineNumbers = 1
+      elif 300 < sliceHeight < 320:
+        topLineNumbers = 2
+      elif 320 < sliceHeight < 340:
+        topLineNumbers = 3
+      elif 340 < sliceHeight < 360:
+        topLineNumbers = 4
+
+      if role == 'background' and foregroundOpacity == 0.0:
+
+        # check if the dic is not empty
+        #if len(self.backgroundDicomDic.keys()) == 0:
+        self.backgroundDicomDic = self.extractDICOMValues(uid)
 
         #
         # Top Left Corner Annotations including:
@@ -285,36 +398,29 @@ class DICOMAnnotationsWidget:
         # Study Description
 
         if self.topLeftAnnotationDisplay:
-          topLeftLines =  []
-          topLeftLines.append(p['Patient Name'].replace('^',', '))
-          topLeftLines.append('ID: ' + p['Patient ID'])
-          val = p['Patient Birth Date']
-          if val != 'Unknown':
-            val = val[4:6] + '/' + val[6:]+ '/' + val[:4]
-          topLeftLines.append(p['Patient Birth Date'] + ', ' + p['Patient Age'] + ', ' + p['Patient Sex'])
-          val = p['Series Date']
-          if  val != 'Unknown':
-            topLeftLines.append(val[4:6] + '/' + val[6:]+ '/' + val[:4])
+          self.topLeftLines[0] = self.backgroundDicomDic['Patient Name'].replace('^',', ')
+          self.topLeftLines[1] = 'ID: ' + self.backgroundDicomDic ['Patient ID']
+          val = self.backgroundDicomDic['Patient Birth Date']
+          val = val[4:6] + '/' + val[6:]+ '/' + val[:4]
+          self.topLeftLines[2] = self.backgroundDicomDic['Patient Birth Date'
+              ] + ', ' + self.backgroundDicomDic['Patient Age'
+                  ] + ', ' + self.backgroundDicomDic['Patient Sex']
+          val = self.backgroundDicomDic['Study Date']
+          self.topLeftLines[3] = val[4:6] + '/' + val[6:]+ '/' + val[:4]
+          val = self.backgroundDicomDic['Study Time']
+          studyH = val[:2]
+          if int(studyH) > 12 :
+            studyH = str (int(studyH) - 12)
+            clockTime = ' PM'
           else:
-            topLeftLines.append(val)
-          val = p['Series Time']
-          if  val != 'Unknown':
-            studyH = val[:2]
-            if int(studyH) > 12 :
-              studyH = str (int(studyH) - 12)
-              clockTime = ' PM'
-            else:
-              studyH = studyH
-              clockTime = ' AM'
-            studyM = val[2:4]
-            studyS = val[4:6]
-            topLeftLines.append( studyH + ':' + studyM  + ':' + studyS +clockTime)
-          topLeftLines.append('Study ID: ' + p['Study ID'])
-          topLeftLines.append(p['Study Description'])
-
-          for lineNumber, line in enumerate(topLeftLines):
-            if lineNumber < topLineNumbers:
-              topLeftAnnotation = topLeftAnnotation + line + '\n'
+            studyH = studyH
+            clockTime = ' AM'
+          studyM = val[2:4]
+          studyS = val[4:6]
+          self.topLeftLines[4] = studyH + ':' + studyM  + ':' + studyS +clockTime
+          self.topLeftLines[5] = self.backgroundDicomDic['Series Description'
+              ] + ' (' + self.backgroundDicomDic['Series Number'] + ')'
+          self.topLeftLines[6] = ''
 
         #
         # Top Right Corner Annotations including:
@@ -326,51 +432,84 @@ class DICOMAnnotationsWidget:
         #
 
         if (self.sliceWidgets[sliceViewName].width > 600 and self.topRightAnnotationDisplay):
-          #topLeftAnnotation = p['Institution Name'] +'\n' + p['Referring Physician Name'].replace('^',', ')
-          topRightLines =  []
-          val = p['Institution Name']
-          if val != 'Unknown':
-            topRightLines.append(val)
-          val = p['Referring Physician Name']
-          if val != 'Unknown':
-            topRightLines.append('Ref: ' + val.replace('^',', '))
-          val = p['Manufacturer']
-          if val != 'Unknown':
-            topRightLines.append(val)
-          val = p['Model']
-          if val != 'Unknown':
-            topRightLines.append(val)
-          val = p['Patient Position']
-          if val != 'Unknown':
-            topRightLines.append(val)
-
-          for lineNumber, line in enumerate(topRightLines):
-            if lineNumber < topLineNumbers:
-              topRightAnnotation = topRightAnnotation + line + '\n'
+          self.topRightLines[0] = self.backgroundDicomDic['Institution Name']
+          val = self.backgroundDicomDic['Referring Physician Name']
+          self.topRightLines[1] = 'Ref: ' + val.replace('^',', ')
+          self.topRightLines[2] = self.backgroundDicomDic['Manufacturer']
+          self.topRightLines[3] = self.backgroundDicomDic['Model']
+          self.topRightLines[4] = self.backgroundDicomDic['Patient Position']
 
         #
-        # Bottom Left Corner Annotations:
+        # Bottom Right Corner Annotations:
         # Modality Specific and Image Comments
         #
-        if self.bottomLeftAnnotationDisplay:
-          bottomLeftLines =  []
-          modality = p['Modality']
+        if self.bottomRightAnnotationDisplay:
+          bottomRightLines =  []
+          modality = self.backgroundDicomDic['Modality']
           if modality == 'MR':
-            bottomLeftLines.append('TR ' + p['Repetition Time'])
-            bottomLeftLines.append('TE ' + p['Echo Time'])
-          '''
-          These values are not available in dicom tag cache now
-          if modality == 'CT':
-            bottomLeftLines.append('mAs ' + p['Exposure'])
-            bottomLeftLines.append('KVP ' + p['KVP'])
-          if (p['Image Comments'] != 'Unknown'):
-            bottomLeftLines.append(p['Image Comments'][:12])
-          '''
-          for line in bottomLeftLines:
-              bottomLeftAnnotation = bottomLeftAnnotation + line + '\n'
+            bottomRightLines.append('TR ' + self.backgroundDicomDic['Repetition Time'])
+            bottomRightLines.append('TE ' + self.backgroundDicomDic['Echo Time'])
+          for line in bottomRightLines:
+              bottomRightAnnotation = bottomRightAnnotation + line + '\n'
+
+      elif role == 'foreground':
+        # forground available
+        # Check if bg volume is available
+        self.topRightLines = ['']*5
+        if self.backgroundVolumeName != 'None':
+          #if len(self.foregroundDicomDic.keys()) == 0:
+          self.foregroundDicomDic = self.extractDICOMValues(uid)
+          if self.backgroundDicomDic['Patient ID'] != self.foregroundDicomDic['Patient ID']:
+            self.topLeftLines =  ['']*8
+          else:
+            if self.backgroundDicomDic['Study ID'] != self.foregroundDicomDic['Study ID']:
+              for i in xrange(3, 5):
+                self.topLeftLines [i] = ''
+
+            if self.backgroundDicomDic['Series Number'] != self.foregroundDicomDic['Series Number']:
+              self.topLeftLines[5] = 'B: ' + self.backgroundDicomDic['Series Description'
+                  ] + ' ('+ self.backgroundDicomDic['Series Number'] + ')'
+              self.topLeftLines[6] = 'F: ' + self.foregroundDicomDic['Series Description'
+                  ] + ' (' +self.foregroundDicomDic['Series Number'] + ')'
+
+      for lineNumber, line in enumerate(self.topLeftLines):
+        if lineNumber < topLineNumbers:
+          if line != ('Unknown' and ''):
+            topLeftAnnotation = topLeftAnnotation + line + '\n'
+
+      for lineNumber, line in enumerate(self.topRightLines):
+        if lineNumber < topLineNumbers:
+          if line != ('Unknown' and ''):
+            topRightAnnotation = topRightAnnotation + line + '\n'
+
+    # bottomLeftLines
+    bottomLeftLines = []
+    if role == 'background':
+      self.backgroundVolumeName = volumeNode.GetName()
+    elif role == 'foreground':
+      self.foregroundVolumeName = volumeNode.GetName()
+    elif role == 'label':
+      self.labelVolumeName = volumeNode.GetName()
+
+    foregroundOpacityString = ''
+    labelOpacityString = ''
+
+    if self.foregroundVolumeName != 'None':
+      foregroundOpacityString = ' (' + str(foregroundOpacity) + ')'
+    if self.labelVolumeName != 'None':
+      labelOpacityString = ' (' + str(labelOpacity) + ')'
+
+    bottomLeftLines.append('L: '+ self.labelVolumeName + labelOpacityString)
+    bottomLeftLines.append('F: '+ self.foregroundVolumeName + foregroundOpacityString)
+    bottomLeftLines.append('B: '+ self.backgroundVolumeName)
+
+    for lineNumber, line in enumerate(bottomLeftLines):
+      if lineNumber < bottomLeftLines:
+        bottomLeftAnnotation = bottomLeftAnnotation + line + '\n'
 
     sliceCornerAnnotation = self.sliceCornerAnnotations[sliceViewName]
     sliceCornerAnnotation.SetText(0, bottomLeftAnnotation)
+    sliceCornerAnnotation.SetText(1, bottomRightAnnotation)
     sliceCornerAnnotation.SetText(2, topLeftAnnotation)
     sliceCornerAnnotation.SetText(3, topRightAnnotation)
     self.sliceViews[sliceViewName].scheduleRender()
@@ -379,13 +518,14 @@ class DICOMAnnotationsWidget:
     p ={}
     slicer.dicomDatabase.loadInstanceHeader(uid)
     tags = {
-    "0008,0021": "Series Date",
-    "0008,0031": "Series Time",
+    "0008,0020": "Study Date",
+    "0008,0030": "Study Time",
     "0008,0060": "Modality",
     "0008,0070": "Manufacturer",
     "0008,0080": "Institution Name",
     "0008,0090": "Referring Physician Name",
     "0008,1030": "Study Description",
+    "0008,103e": "Series Description",
     "0008,1090": "Model",
     "0010,0010": "Patient Name",
     "0010,0020": "Patient ID",
@@ -396,6 +536,7 @@ class DICOMAnnotationsWidget:
     "0018,1030": "Protocol Name",
     "0018,5100": "Patient Position",
     "0020,0010": "Study ID",
+    "0020,0011": "Series Number",
     "0020,4000": "Image Comments"
     }
     p = self.extractTagValue(p, tags)
