@@ -349,7 +349,7 @@ class DICOMAnnotationsWidget:
       foregroundVolumeName = foregroundVolume.GetName()
       self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
       self.cornerTexts[0]['2-Foreground'] = 'F: ' + foregroundVolumeName +  ' (' + str(
-                    foregroundOpacity) + ')'
+                    "%.1f"%foregroundOpacity) + ')'
 
       bgUids = backgroundVolume.GetAttribute('DICOM.instanceUIDs')
       fgUids = foregroundVolume.GetAttribute('DICOM.instanceUIDs')
@@ -391,7 +391,7 @@ class DICOMAnnotationsWidget:
       labelOpacity = sliceCompositeNode.GetLabelOpacity()
       labelVolumeName = labelVolume.GetName()
       self.cornerTexts[0]['1-Label'] = 'L: ' + labelVolumeName + ' (' + str(
-                    labelOpacity) + ')'
+                    "%.1f"%labelOpacity) + ')'
 
     self.drawCornerAnnotations()
     #labelOpacity = sliceCompositeNode.GetLabelOpacity()
