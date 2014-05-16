@@ -192,8 +192,6 @@ class DICOMAnnotationsWidget:
     pass
 
   def updateSliceViewFromGUI(self):
-    #print 'update sliceview from gui'
-
     # Create corner annotations if have not created already
     if len(self.sliceCornerAnnotations.items()) == 0:
       self.createCornerAnnotations()
@@ -256,8 +254,6 @@ class DICOMAnnotationsWidget:
         self.sliceViews[sliceViewName].scheduleRender()
 
   def createCornerAnnotations(self):
-
-    #print 'create corner annotations'
     self.sliceViewNames = []
     self.sliceWidgets = {}
     self.sliceViews = {}
@@ -350,7 +346,6 @@ class DICOMAnnotationsWidget:
     if self.sliceViews[self.currentSliceViewName]:
 
       viewWidth = self.sliceViews[self.currentSliceViewName].width
-      print self.currentSliceViewName
       m = sliceNode.GetXYToRAS()
       scalingFactor = "mm"
       if self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Axial':
@@ -358,9 +353,6 @@ class DICOMAnnotationsWidget:
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Sagittal':
         scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Coronal':
-        for i in xrange(0,3):
-          for j in xrange(0,3):
-            print i,j,m.GetElement(i,j)
         scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
 
       viewHeight = self.sliceViews[self.currentSliceViewName].height
@@ -398,7 +390,6 @@ class DICOMAnnotationsWidget:
 
       # Only background
       elif (backgroundVolume != None):
-        #print 'only bg is present'
         backgroundVolumeName = backgroundVolume.GetName()
         if self.bottomLeftAnnotationDisplay:
           self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
