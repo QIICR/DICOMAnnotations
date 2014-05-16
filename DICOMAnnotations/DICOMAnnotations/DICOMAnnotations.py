@@ -165,14 +165,55 @@ class DICOMAnnotationsWidget:
     fontPropertiesHBoxLayout.addWidget(self.fontSizeSpinBox)
     self.fontSizeSpinBox.connect('valueChanged(int)', self.updateSliceViewFromGUI)
 
+    #
+    # Scaling Bar Area
+    #
+    scalingBarCollapsibleButton = ctk.ctkCollapsibleButton()
+    scalingBarCollapsibleButton.text = "Scaling Bar"
+    self.layout.addWidget(scalingBarCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    scalingBarFormLayout = qt.QFormLayout(scalingBarCollapsibleButton)
+
+    #
+    # Scaling Bar Activation Checkbox
+    #
+    self.showScalingBarCheckBox = qt.QCheckBox('Show Scaling Bar')
+    scalingBarFormLayout.addRow(self.showScalingBarCheckBox)
+
     # connections
 
     # Add vertical spacer
     self.layout.addStretch(1)
     self.sliceViewAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
+    self.showScalingBarCheckBox.connect('clicked()', self.onShowScalingBarChecbox)
 
   def cleanup(self):
     pass
+
+  def onShowScalingBarChecbox(self):
+    self.actor = vtk.vtkActor2D()
+    rw = self.layoutManager.sliceWidget('Red')
+    sv = rw.sliceView()
+    renderW = sv.renderWindow()
+    renderer = renderW.GetRenderers().GetItemAsObject(0)
+
+    if self.showScalingBarCheckBox.checked:
+      print 'show scaling bar'
+      source = vtk.vtkLineSource()
+      source.SetPoint1(50,50,0)
+      source.SetPoint2(50,100,0)
+      # mapper
+      mapper = vtk.vtkPolyDataMapper2D()
+      mapper.SetInput(source.GetOutput())
+      # actor
+      self.actor.SetMapper(mapper)
+      # Get Renderer
+      
+      renderer.AddActor(self.actor)
+    else:
+      print 'hide scaling bar'
+      renderer.RemoveActor(self.actor)
 
   def updateSliceViewFromGUI(self):
     #print 'update sliceview from gui'
@@ -292,7 +333,6 @@ class DICOMAnnotationsWidget:
     sliceNode = backgroundLayer.GetSliceNode()
     sliceViewName = sliceNode.GetLayoutName()
     self.currentSliceViewName = sliceNode.GetLayoutName()
-    print self.currentSliceViewName
 
     # Both background and foregraound
     if ( backgroundVolume != None and foregroundVolume != None):
