@@ -186,34 +186,10 @@ class DICOMAnnotationsWidget:
     # Add vertical spacer
     self.layout.addStretch(1)
     self.sliceViewAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
-    self.showScalingBarCheckBox.connect('clicked()', self.onShowScalingBarChecbox)
+    self.showScalingBarCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
 
   def cleanup(self):
     pass
-
-  def onShowScalingBarChecbox(self):
-    self.actor = vtk.vtkActor2D()
-    rw = self.layoutManager.sliceWidget('Red')
-    sv = rw.sliceView()
-    renderW = sv.renderWindow()
-    renderer = renderW.GetRenderers().GetItemAsObject(0)
-
-    if self.showScalingBarCheckBox.checked:
-      print 'show scaling bar'
-      source = vtk.vtkLineSource()
-      source.SetPoint1(50,50,0)
-      source.SetPoint2(50,100,0)
-      # mapper
-      mapper = vtk.vtkPolyDataMapper2D()
-      mapper.SetInput(source.GetOutput())
-      # actor
-      self.actor.SetMapper(mapper)
-      # Get Renderer
-      
-      renderer.AddActor(self.actor)
-    else:
-      print 'hide scaling bar'
-      renderer.RemoveActor(self.actor)
 
   def updateSliceViewFromGUI(self):
     #print 'update sliceview from gui'
@@ -288,6 +264,10 @@ class DICOMAnnotationsWidget:
     self.blNodeObserverTag = {}
     self.sliceLogicObserverTag = {}
     self.sliceCornerAnnotations = {}
+    self.renderers = {}
+    self.scalingBarActors = {}
+    self.scalingBarSources = {}
+    self.scalingBarTextActors = {}
 
     sliceViewNames = self.layoutManager.sliceViewNames()
 
@@ -300,6 +280,39 @@ class DICOMAnnotationsWidget:
     sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
     self.sliceWidgets[sliceViewName] = sliceWidget
     sliceView = sliceWidget.sliceView()
+
+    renderWindow = sliceView.renderWindow()
+    renderer = renderWindow.GetRenderers().GetItemAsObject(0)
+    self.renderers[sliceViewName] = renderer
+
+    self.scalingBarSources[sliceViewName] = vtk.vtkLineSource()
+    #self.scalingBarSources[sliceViewName].SetPoint1(50,50,0)
+    #self.scalingBarSources[sliceViewName].SetPoint2(50,100,0)
+
+    self.scalingBarTextActors[sliceViewName] = vtk.vtkTextActor()
+    textActor = self.scalingBarTextActors[sliceViewName]
+    txtprop=textActor.GetTextProperty()
+    txtprop.SetFontFamilyToTimes
+    txtprop.SetFontSize(14)
+    txtprop.SetColor(1,1,1)
+    textActor.SetInput("")
+    #textActor.SetDisplayPosition(100,100)
+
+    # mapper
+    mapper = vtk.vtkPolyDataMapper2D()
+    mapper.SetInput(self.scalingBarSources [sliceViewName].GetOutput())
+
+    # actor
+    self.scalingBarActors [sliceViewName] = vtk.vtkActor2D()
+    actor = self.scalingBarActors[sliceViewName]
+    actor.SetMapper(mapper)
+    # color actor
+    actor.GetProperty().SetColor(1,1,1)
+    actor.GetProperty().SetLineWidth(2)
+    if self.showScalingBarCheckBox.checked:
+      renderer.AddActor(actor)
+      renderer.AddActor(textActor)
+
     self.sliceViews[sliceViewName] = sliceView
     self.sliceCornerAnnotations[sliceViewName] = sliceView.cornerAnnotation()
     sliceLogic = sliceWidget.sliceLogic()
@@ -333,58 +346,88 @@ class DICOMAnnotationsWidget:
     sliceNode = backgroundLayer.GetSliceNode()
     sliceViewName = sliceNode.GetLayoutName()
     self.currentSliceViewName = sliceNode.GetLayoutName()
+    
+    if self.sliceViews[self.currentSliceViewName]:
 
-    # Both background and foregraound
-    if ( backgroundVolume != None and foregroundVolume != None):
-      foregroundOpacity = sliceCompositeNode.GetForegroundOpacity()
-      backgroundVolumeName = backgroundVolume.GetName()
-      foregroundVolumeName = foregroundVolume.GetName()
-      self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
-      self.cornerTexts[0]['2-Foreground'] = 'F: ' + foregroundVolumeName +  ' (' + str(
-                    "%.1f"%foregroundOpacity) + ')'
+      viewWidth = self.sliceViews[self.currentSliceViewName].width
+      print self.currentSliceViewName
+      m = sliceNode.GetXYToRAS()
+      scalingFactor = "mm"
+      if self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Axial':
+        scalingFactor = str("%.1f"%(m.GetElement(1,1)*viewWidth/5))+" mm"
+      elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Sagittal':
+        scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
+      elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Coronal':
+        for i in xrange(0,3):
+          for j in xrange(0,3):
+            print i,j,m.GetElement(i,j)
+        scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
 
-      bgUids = backgroundVolume.GetAttribute('DICOM.instanceUIDs')
-      fgUids = foregroundVolume.GetAttribute('DICOM.instanceUIDs')
-      if (bgUids and fgUids):
-        bgUid = bgUids.partition(' ')[0]
-        fgUid = fgUids.partition(' ')[0]
-        self.makeDicomAnnotation(bgUid,fgUid)
+      viewHeight = self.sliceViews[self.currentSliceViewName].height
+      self.scalingBarSources[sliceViewName].SetPoint1(viewWidth/2.5,viewHeight-15,0)
+      self.scalingBarSources[sliceViewName].SetPoint2(viewWidth-viewWidth/2.5,viewHeight-15,0)
+      textActor = self.scalingBarTextActors[self.currentSliceViewName]
+      textActor.SetInput(scalingFactor)
+      textActor.SetDisplayPosition(viewWidth-viewWidth/2.5+5,viewHeight-23)
+
+      if self.showScalingBarCheckBox.checked:
+        self.renderers[self.currentSliceViewName].AddActor(self.scalingBarActors[self.currentSliceViewName])
+        self.renderers[self.currentSliceViewName].AddActor(textActor)
       else:
-        for key in self.cornerTexts[2]:
-          self.cornerTexts[2][key] = ''
+        self.renderers[self.currentSliceViewName].RemoveActor(self.scalingBarActors[self.currentSliceViewName])
+        self.renderers[self.currentSliceViewName].RemoveActor(textActor)
 
-    # Only background
-    elif (backgroundVolume != None):
-      #print 'only bg is present'
-      backgroundVolumeName = backgroundVolume.GetName()
-      if self.bottomLeftAnnotationDisplay:
-        self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
-
-      uids = backgroundVolume.GetAttribute('DICOM.instanceUIDs')
-      if uids:
-        uid = uids.partition(' ')[0]
-        self.makeDicomAnnotation(uid,None)
-
-    # Only foreground
-    elif (foregroundVolume != None):
-      if self.bottomLeftAnnotationDisplay:
+      # Both background and foregraound
+      if ( backgroundVolume != None and foregroundVolume != None):
+        foregroundOpacity = sliceCompositeNode.GetForegroundOpacity()
+        backgroundVolumeName = backgroundVolume.GetName()
         foregroundVolumeName = foregroundVolume.GetName()
-        self.cornerTexts[0]['2-Foreground'] = 'F: ' + foregroundVolumeName
+        self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
+        self.cornerTexts[0]['2-Foreground'] = 'F: ' + foregroundVolumeName +  ' (' + str(
+                      "%.1f"%foregroundOpacity) + ')'
 
-      uids = foregroundVolume.GetAttribute('DICOM.instanceUIDs')
-      if uids:
-        uid = uids.partition(' ')[0]
-        # passed UID as bg
-        self.makeDicomAnnotation(uid,None)
+        bgUids = backgroundVolume.GetAttribute('DICOM.instanceUIDs')
+        fgUids = foregroundVolume.GetAttribute('DICOM.instanceUIDs')
+        if (bgUids and fgUids):
+          bgUid = bgUids.partition(' ')[0]
+          fgUid = fgUids.partition(' ')[0]
+          self.makeDicomAnnotation(bgUid,fgUid)
+        else:
+          for key in self.cornerTexts[2]:
+            self.cornerTexts[2][key] = ''
 
-    if (labelVolume != None):
-      labelOpacity = sliceCompositeNode.GetLabelOpacity()
-      labelVolumeName = labelVolume.GetName()
-      self.cornerTexts[0]['1-Label'] = 'L: ' + labelVolumeName + ' (' + str(
-                    "%.1f"%labelOpacity) + ')'
+      # Only background
+      elif (backgroundVolume != None):
+        #print 'only bg is present'
+        backgroundVolumeName = backgroundVolume.GetName()
+        if self.bottomLeftAnnotationDisplay:
+          self.cornerTexts[0]['3-Background'] = 'B: ' + backgroundVolumeName
 
-    self.drawCornerAnnotations()
-    #labelOpacity = sliceCompositeNode.GetLabelOpacity()
+        uids = backgroundVolume.GetAttribute('DICOM.instanceUIDs')
+        if uids:
+          uid = uids.partition(' ')[0]
+          self.makeDicomAnnotation(uid,None)
+
+      # Only foreground
+      elif (foregroundVolume != None):
+        if self.bottomLeftAnnotationDisplay:
+          foregroundVolumeName = foregroundVolume.GetName()
+          self.cornerTexts[0]['2-Foreground'] = 'F: ' + foregroundVolumeName
+
+        uids = foregroundVolume.GetAttribute('DICOM.instanceUIDs')
+        if uids:
+          uid = uids.partition(' ')[0]
+          # passed UID as bg
+          self.makeDicomAnnotation(uid,None)
+
+      if (labelVolume != None):
+        labelOpacity = sliceCompositeNode.GetLabelOpacity()
+        labelVolumeName = labelVolume.GetName()
+        self.cornerTexts[0]['1-Label'] = 'L: ' + labelVolumeName + ' (' + str(
+                      "%.1f"%labelOpacity) + ')'
+
+      self.drawCornerAnnotations()
+      #labelOpacity = sliceCompositeNode.GetLabelOpacity()
 
   def makeDicomAnnotation(self,bgUid,fgUid):
     if fgUid != None and bgUid != None:
