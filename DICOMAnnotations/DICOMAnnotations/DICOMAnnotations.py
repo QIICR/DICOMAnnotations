@@ -262,7 +262,7 @@ class DICOMAnnotationsWidget:
     self.sliceCornerAnnotations = {}
     self.renderers = {}
     self.scalingBarActors = {}
-    self.scalingBarSources = {}
+    self.points = {}
     self.scalingBarTextActors = {}
 
     sliceViewNames = self.layoutManager.sliceViewNames()
@@ -281,9 +281,38 @@ class DICOMAnnotationsWidget:
     renderer = renderWindow.GetRenderers().GetItemAsObject(0)
     self.renderers[sliceViewName] = renderer
 
-    self.scalingBarSources[sliceViewName] = vtk.vtkLineSource()
-    #self.scalingBarSources[sliceViewName].SetPoint1(50,50,0)
-    #self.scalingBarSources[sliceViewName].SetPoint2(50,100,0)
+    self.points[sliceViewName] = vtk.vtkPoints()
+    self.points[sliceViewName].SetNumberOfPoints(4)
+
+    # Create the first line
+    line0 = vtk.vtkLine()
+    line0.GetPointIds().SetId(0,0)
+    line0.GetPointIds().SetId(1,1)
+
+    # Create the second line
+    line1 = vtk.vtkLine()
+    line1.GetPointIds().SetId(0,0)
+    line1.GetPointIds().SetId(1,2)
+
+    # Create the third line
+    line2 = vtk.vtkLine()
+    line2.GetPointIds().SetId(0,2)
+    line2.GetPointIds().SetId(1,3)
+
+    # Create a cell array to store the lines in and add the lines to it
+    lines = vtk.vtkCellArray()
+    lines.InsertNextCell(line0)
+    lines.InsertNextCell(line1)
+    lines.InsertNextCell(line2)
+
+    # Create a polydata to store everything in
+    linesPolyData = vtk.vtkPolyData()
+
+    # Add the points to the dataset
+    linesPolyData.SetPoints(self.points[sliceViewName])
+
+    # Add the lines to the dataset
+    linesPolyData.SetLines(lines)
 
     self.scalingBarTextActors[sliceViewName] = vtk.vtkTextActor()
     textActor = self.scalingBarTextActors[sliceViewName]
@@ -292,12 +321,10 @@ class DICOMAnnotationsWidget:
     txtprop.SetFontSize(14)
     txtprop.SetColor(1,1,1)
     textActor.SetInput("")
-    #textActor.SetDisplayPosition(100,100)
 
     # mapper
     mapper = vtk.vtkPolyDataMapper2D()
-    mapper.SetInput(self.scalingBarSources [sliceViewName].GetOutput())
-
+    mapper.SetInput(linesPolyData)
     # actor
     self.scalingBarActors [sliceViewName] = vtk.vtkActor2D()
     actor = self.scalingBarActors[sliceViewName]
@@ -356,8 +383,11 @@ class DICOMAnnotationsWidget:
         scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
 
       viewHeight = self.sliceViews[self.currentSliceViewName].height
-      self.scalingBarSources[sliceViewName].SetPoint1(viewWidth/2.5,viewHeight-15,0)
-      self.scalingBarSources[sliceViewName].SetPoint2(viewWidth-viewWidth/2.5,viewHeight-15,0)
+      pts = self.points[sliceViewName]
+      pts.SetPoint(0,[viewWidth/2.5,viewHeight-10, 0])
+      pts.SetPoint(1,[viewWidth/2.5,viewHeight-17, 0])
+      pts.SetPoint(2,[viewWidth-viewWidth/2.5,viewHeight-10, 0])
+      pts.SetPoint(3,[viewWidth-viewWidth/2.5,viewHeight-17, 0])
       textActor = self.scalingBarTextActors[self.currentSliceViewName]
       textActor.SetInput(scalingFactor)
       textActor.SetDisplayPosition(viewWidth-viewWidth/2.5+5,viewHeight-23)
