@@ -264,6 +264,8 @@ class DICOMAnnotationsWidget:
     self.scalingBarActors = {}
     self.points = {}
     self.scalingBarTextActors = {}
+    self.sliceRightOrientaionMarker = {}
+    self.sliceTopOrientaionMarker = {}
 
     sliceViewNames = self.layoutManager.sliceViewNames()
 
@@ -315,12 +317,22 @@ class DICOMAnnotationsWidget:
     linesPolyData.SetLines(lines)
 
     self.scalingBarTextActors[sliceViewName] = vtk.vtkTextActor()
-    textActor = self.scalingBarTextActors[sliceViewName]
-    txtprop=textActor.GetTextProperty()
-    txtprop.SetFontFamilyToTimes
-    txtprop.SetFontSize(14)
-    txtprop.SetColor(1,1,1)
-    textActor.SetInput("")
+    self.sliceRightOrientaionMarker[sliceViewName] = vtk.vtkTextActor()
+    self.sliceTopOrientaionMarker[sliceViewName] = vtk.vtkTextActor()
+    textActors = [self.scalingBarTextActors[sliceViewName],
+      self.sliceRightOrientaionMarker[sliceViewName],
+      self.sliceTopOrientaionMarker[sliceViewName]]
+
+    for textActor in textActors:
+      txtprop = textActor.GetTextProperty()
+      txtprop.SetFontFamilyToTimes
+      if textActor == (self.scalingBarTextActors[sliceViewName]):
+        txtprop.SetFontSize(14)
+      # Larger font size for orientation markers
+      else:
+        txtprop.SetFontSize(20)
+      txtprop.SetColor(1,1,1)
+      textActor.SetInput("")
 
     # mapper
     mapper = vtk.vtkPolyDataMapper2D()
@@ -373,8 +385,9 @@ class DICOMAnnotationsWidget:
     if self.sliceViews[self.currentSliceViewName]:
 
       viewWidth = self.sliceViews[self.currentSliceViewName].width
+      viewHeight = self.sliceViews[self.currentSliceViewName].height
       m = sliceNode.GetXYToRAS()
-      scalingFactor = "mm"
+      scalingFactor = " mm"
       if self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Axial':
         scalingFactor = str("%.1f"%(m.GetElement(1,1)*viewWidth/5))+" mm"
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Sagittal':
@@ -382,22 +395,41 @@ class DICOMAnnotationsWidget:
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Coronal':
         scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
 
-      viewHeight = self.sliceViews[self.currentSliceViewName].height
+      sliceOrientation = self.sliceWidgets[self.currentSliceViewName].sliceOrientation
+      rightMarker = self.sliceRightOrientaionMarker[self.currentSliceViewName]
+      topMarker = self.sliceTopOrientaionMarker[self.currentSliceViewName]
+      if sliceOrientation == 'Axial':
+        rightMarker.SetInput('R')
+        topMarker.SetInput('A')
+      elif sliceOrientation == 'Sagittal':
+        rightMarker.SetInput('P')
+        topMarker.SetInput('S')
+      elif sliceOrientation == 'Coronal':
+        rightMarker.SetInput('R')
+        topMarker.SetInput('S')
+
+      rightMarker.SetDisplayPosition(viewWidth-30,viewHeight/2)
+      topMarker.SetDisplayPosition(viewWidth/2,viewHeight-25)
+
       pts = self.points[sliceViewName]
-      pts.SetPoint(0,[viewWidth/2.5,viewHeight-10, 0])
-      pts.SetPoint(1,[viewWidth/2.5,viewHeight-17, 0])
-      pts.SetPoint(2,[viewWidth-viewWidth/2.5,viewHeight-10, 0])
-      pts.SetPoint(3,[viewWidth-viewWidth/2.5,viewHeight-17, 0])
+      pts.SetPoint(0,[viewWidth/2.5,10, 0])
+      pts.SetPoint(1,[viewWidth/2.5,17, 0])
+      pts.SetPoint(2,[viewWidth-viewWidth/2.5,10, 0])
+      pts.SetPoint(3,[viewWidth-viewWidth/2.5,17, 0])
       textActor = self.scalingBarTextActors[self.currentSliceViewName]
       textActor.SetInput(scalingFactor)
-      textActor.SetDisplayPosition(viewWidth-viewWidth/2.5+5,viewHeight-23)
+      textActor.SetDisplayPosition(viewWidth-viewWidth/2.5+10,7)
 
       if self.showScalingBarCheckBox.checked:
         self.renderers[self.currentSliceViewName].AddActor(self.scalingBarActors[self.currentSliceViewName])
         self.renderers[self.currentSliceViewName].AddActor(textActor)
+        self.renderers[self.currentSliceViewName].AddActor(rightMarker)
+        self.renderers[self.currentSliceViewName].AddActor(topMarker)
       else:
         self.renderers[self.currentSliceViewName].RemoveActor(self.scalingBarActors[self.currentSliceViewName])
         self.renderers[self.currentSliceViewName].RemoveActor(textActor)
+        self.renderers[self.currentSliceViewName].RemoveActor(rightMarker)
+        self.renderers[self.currentSliceViewName].RemoveActor(topMarker)
 
       # Both background and foregraound
       if ( backgroundVolume != None and foregroundVolume != None):
