@@ -1,5 +1,7 @@
+from __future__ import division
 import os
 import unittest
+import numpy as np
 from __main__ import vtk, qt, ctk, slicer
 
 #
@@ -70,6 +72,71 @@ class DICOMAnnotationsWidget:
 
     self.layoutManager = slicer.app.layoutManager()
     self.sliceCornerAnnotations = {}
+    
+    #
+    # Loading the Human 3D Model into scene
+    #
+    self.scene = slicer.mrmlScene
+
+    # Module's Path
+    # TODO: Update when moving to Data Probe
+    modulePath= slicer.modules.dicomannotations.path.replace("DICOMAnnotations.py","")
+
+    modelPath = modulePath + "Resources/Models/" + "slicer-human-model.stl"
+    successfulLoad = slicer.util.loadModel(modelPath)
+    if successfulLoad != True:
+      print 'Warning: human model did not load'
+
+    nodes = self.scene.GetNodesByName('slicer-human-model') 
+    n = nodes.GetNumberOfItems()
+    self.humanModelNode = nodes.GetItemAsObject(0)
+    self.humanModelNode.SetDisplayVisibility(False)
+    displayNode = self.humanModelNode.GetDisplayNode()
+    # Color R:239, G:208, B:207
+    #displayNode.SetColor(0.93,0.81,0.80)
+    displayNode.SetSliceIntersectionVisibility(False)
+
+    # Shorts model
+    shortsPath = modulePath + "Resources/Models/" + "shorts-model.stl"
+    successfulLoad = slicer.util.loadModel(shortsPath)
+    if successfulLoad != True:
+      print 'Warning: shorts model did not load'
+    nodes = self.scene.GetNodesByName('shorts-model') 
+    n = nodes.GetNumberOfItems()
+    self.shortsModelNode = nodes.GetItemAsObject(0)
+    self.shortsModelNode.SetDisplayVisibility(False)
+    displayNode = self.shortsModelNode.GetDisplayNode()
+    # Color R:239, G:208, B:207
+    #displayNode.SetColor(0.93,0.81,0.80)
+    displayNode.SetSliceIntersectionVisibility(False)
+
+    # Left Shoe
+    leftShoePath = modulePath + "Resources/Models/" + "left-shoe.stl"
+    successfulLoad = slicer.util.loadModel(leftShoePath)
+    if successfulLoad != True:
+      print 'Warning: left shoe model did not load'
+    nodes = self.scene.GetNodesByName('left-shoe') 
+    n = nodes.GetNumberOfItems()
+    self.leftShoeNode = nodes.GetItemAsObject(0)
+    self.leftShoeNode.SetDisplayVisibility(False)
+    displayNode = self.leftShoeNode .GetDisplayNode()
+    # Color R:239, G:208, B:207
+    #displayNode.SetColor(0.93,0.81,0.80)
+    displayNode.SetSliceIntersectionVisibility(False)
+
+    # Right Shoe
+    rightShoePath = modulePath + "Resources/Models/" + "right-shoe.stl"
+    successfulLoad = slicer.util.loadModel(rightShoePath)
+    if successfulLoad != True:
+      print 'Warning: right-shoe model did not load'
+    nodes = self.scene.GetNodesByName('right-shoe') 
+    n = nodes.GetNumberOfItems()
+    self.rightShoeNode = nodes.GetItemAsObject(0)
+    self.rightShoeNode.SetDisplayVisibility(False)
+    displayNode = self.rightShoeNode.GetDisplayNode()
+    # Color R:239, G:208, B:207
+    #displayNode.SetColor(0.93,0.81,0.80)
+    displayNode.SetSliceIntersectionVisibility(False)
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -168,12 +235,13 @@ class DICOMAnnotationsWidget:
     #
     # Scaling Bar Area
     #
-    scalingBarCollapsibleButton = ctk.ctkCollapsibleButton()
-    scalingBarCollapsibleButton.text = "Scaling Bar"
-    self.layout.addWidget(scalingBarCollapsibleButton)
+    self.scalingBarCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.scalingBarCollapsibleButton.enabled = False
+    self.scalingBarCollapsibleButton.text = "Scaling Bar"
+    self.layout.addWidget(self.scalingBarCollapsibleButton)
 
     # Layout within the dummy collapsible button
-    scalingBarFormLayout = qt.QFormLayout(scalingBarCollapsibleButton)
+    scalingBarFormLayout = qt.QFormLayout(self.scalingBarCollapsibleButton)
 
     #
     # Scaling Bar Activation Checkbox
@@ -181,12 +249,30 @@ class DICOMAnnotationsWidget:
     self.showScalingBarCheckBox = qt.QCheckBox('Show Scaling Bar')
     scalingBarFormLayout.addRow(self.showScalingBarCheckBox)
 
+    #
+    # Human Model Area
+    #
+    self.humanModelCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.humanModelCollapsibleButton.text = "Human Model"
+    self.humanModelCollapsibleButton.enabled = False
+    self.layout.addWidget(self.humanModelCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    humanModelFormLayout = qt.QFormLayout(self.humanModelCollapsibleButton)
+
+    #
+    # Human Model Activation Checkbox
+    #
+    self.showHumanModelCheckBox = qt.QCheckBox('Show Human Model')
+    humanModelFormLayout.addRow(self.showHumanModelCheckBox)
+
     # connections
 
     # Add vertical spacer
     self.layout.addStretch(1)
     self.sliceViewAnnotationsCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
     self.showScalingBarCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
+    self.showHumanModelCheckBox.connect('clicked()', self.updateSliceViewFromGUI)
 
   def cleanup(self):
     pass
@@ -236,6 +322,8 @@ class DICOMAnnotationsWidget:
     if self.sliceViewAnnotationsCheckBox.checked:
       self.cornerActivationsGroupBox.enabled = True
       self.fontPropertiesGroupBox.enabled = True
+      self.humanModelCollapsibleButton.enabled = True
+      self.scalingBarCollapsibleButton.enabled = True
 
       for sliceViewName in self.sliceViewNames:
         sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
@@ -245,6 +333,8 @@ class DICOMAnnotationsWidget:
     else:
       self.cornerActivationsGroupBox.enabled = False
       self.fontPropertiesGroupBox.enabled = False
+      self.humanModelCollapsibleButton.enabled = False
+      self.scalingBarCollapsibleButton.enabled = False
 
       for sliceViewName in self.sliceViewNames:
         self.sliceCornerAnnotations[sliceViewName].SetText(0, "")
@@ -257,15 +347,19 @@ class DICOMAnnotationsWidget:
     self.sliceViewNames = []
     self.sliceWidgets = {}
     self.sliceViews = {}
+    self.cameras = {}
     self.blNodeObserverTag = {}
     self.sliceLogicObserverTag = {}
     self.sliceCornerAnnotations = {}
+    self.humanModelRenderers = {}
     self.renderers = {}
     self.scalingBarActors = {}
     self.points = {}
     self.scalingBarTextActors = {}
-    self.sliceRightOrientaionMarker = {}
-    self.sliceTopOrientaionMarker = {}
+    #self.sliceRightOrientaionMarker = {}
+    #self.sliceTopOrientaionMarker = {}
+    # NOTE: New
+    self.colorScalarBars = {}
 
     sliceViewNames = self.layoutManager.sliceViewNames()
 
@@ -283,29 +377,68 @@ class DICOMAnnotationsWidget:
     renderer = renderWindow.GetRenderers().GetItemAsObject(0)
     self.renderers[sliceViewName] = renderer
 
+    #
+    # Create the Scaling Bar
+    #
     self.points[sliceViewName] = vtk.vtkPoints()
-    self.points[sliceViewName].SetNumberOfPoints(4)
+    self.points[sliceViewName].SetNumberOfPoints(10)
 
-    # Create the first line
+    # Create line#0
     line0 = vtk.vtkLine()
     line0.GetPointIds().SetId(0,0)
     line0.GetPointIds().SetId(1,1)
 
-    # Create the second line
+    # Create line#1
     line1 = vtk.vtkLine()
     line1.GetPointIds().SetId(0,0)
     line1.GetPointIds().SetId(1,2)
 
-    # Create the third line
+    # Create line#2
     line2 = vtk.vtkLine()
     line2.GetPointIds().SetId(0,2)
     line2.GetPointIds().SetId(1,3)
+
+    # Create line#3
+    line3 = vtk.vtkLine()
+    line3.GetPointIds().SetId(0,2)
+    line3.GetPointIds().SetId(1,4)
+
+    # Create line#4
+    line4 = vtk.vtkLine()
+    line4.GetPointIds().SetId(0,4)
+    line4.GetPointIds().SetId(1,5)
+
+    # Create line#5
+    line5 = vtk.vtkLine()
+    line5.GetPointIds().SetId(0,4)
+    line5.GetPointIds().SetId(1,6)
+
+    # Create line#6
+    line6 = vtk.vtkLine()
+    line6.GetPointIds().SetId(0,6)
+    line6.GetPointIds().SetId(1,7)
+
+    # Create line#7
+    line7 = vtk.vtkLine()
+    line7.GetPointIds().SetId(0,6)
+    line7.GetPointIds().SetId(1,8)
+
+    # Create line#8
+    line8 = vtk.vtkLine()
+    line8.GetPointIds().SetId(0,8)
+    line8.GetPointIds().SetId(1,9)
 
     # Create a cell array to store the lines in and add the lines to it
     lines = vtk.vtkCellArray()
     lines.InsertNextCell(line0)
     lines.InsertNextCell(line1)
     lines.InsertNextCell(line2)
+    lines.InsertNextCell(line3)
+    lines.InsertNextCell(line4)
+    lines.InsertNextCell(line5)
+    lines.InsertNextCell(line6)
+    lines.InsertNextCell(line7)
+    lines.InsertNextCell(line8)
 
     # Create a polydata to store everything in
     linesPolyData = vtk.vtkPolyData()
@@ -317,6 +450,7 @@ class DICOMAnnotationsWidget:
     linesPolyData.SetLines(lines)
 
     self.scalingBarTextActors[sliceViewName] = vtk.vtkTextActor()
+    '''
     self.sliceRightOrientaionMarker[sliceViewName] = vtk.vtkTextActor()
     self.sliceTopOrientaionMarker[sliceViewName] = vtk.vtkTextActor()
     textActors = [self.scalingBarTextActors[sliceViewName],
@@ -333,26 +467,114 @@ class DICOMAnnotationsWidget:
         txtprop.SetFontSize(20)
       txtprop.SetColor(1,1,1)
       textActor.SetInput("")
+    '''
 
     # mapper
     mapper = vtk.vtkPolyDataMapper2D()
-    mapper.SetInput(linesPolyData)
+    if vtk.VTK_MAJOR_VERSION <= 5:
+      mapper.SetInput(linesPolyData)
+    else:
+      mapper.SetInputData(linesPolyData)
     # actor
-    self.scalingBarActors [sliceViewName] = vtk.vtkActor2D()
+    self.scalingBarActors[sliceViewName] = vtk.vtkActor2D()
     actor = self.scalingBarActors[sliceViewName]
     actor.SetMapper(mapper)
     # color actor
     actor.GetProperty().SetColor(1,1,1)
-    actor.GetProperty().SetLineWidth(2)
+    actor.GetProperty().SetLineWidth(1)
     if self.showScalingBarCheckBox.checked:
       renderer.AddActor(actor)
       renderer.AddActor(textActor)
+
+    #NOTE
+    scalarBar = vtk.vtkScalarBarActor()
+    lookupTable = vtk.vtkLookupTable()
+    scalarBar.SetLookupTable(lookupTable)
+    #renderer.AddActor2D(scalarBar)
+    self.colorScalarBars[sliceViewName] = scalarBar
 
     self.sliceViews[sliceViewName] = sliceView
     self.sliceCornerAnnotations[sliceViewName] = sliceView.cornerAnnotation()
     sliceLogic = sliceWidget.sliceLogic()
     self.sliceLogicObserverTag[sliceViewName] = sliceLogic.AddObserver(vtk.vtkCommand.ModifiedEvent, 
-                                              self.updateCornerAnnotations)
+                                             self.updateCornerAnnotations)
+
+
+    #
+    # Making the human model mapper and actor
+    #
+
+    # Mapper
+    humanMapper = vtk.vtkPolyDataMapper()
+    shortsMapper = vtk.vtkPolyDataMapper()
+    leftShoeMapper = vtk.vtkPolyDataMapper()
+    rightShoeMapper = vtk.vtkPolyDataMapper()
+
+    if vtk.VTK_MAJOR_VERSION <= 5:
+      humanMapper.SetInput(self.humanModelNode.GetPolyData())
+      shortsMapper.SetInput(self.shortsModelNode.GetPolyData())
+      leftShoeMapper.SetInput(self.leftShoeNode.GetPolyData())
+      rightShoeMapper.SetInput(self.rightShoeNode.GetPolyData())
+    else:
+      humanMapper.SetInputData(self.humanModelNode.GetPolyData())
+      shortsMapper.SetInputData(self.shortsModelNode.GetPolyData())
+      leftShoeMapper.SetInputData(self.leftShoeNode.GetPolyData())
+      rightShoeMapper.SetInputData(self.rightShoeNode.GetPolyData())
+
+    # Actor
+    self.humanActor = vtk.vtkActor()
+    self.humanActor.SetMapper(humanMapper)
+    self.humanActor.GetProperty().SetColor(0.93,0.81,0.80)
+
+    self.shortsActor = vtk.vtkActor()
+    self.shortsActor.SetMapper(shortsMapper)
+    self.shortsActor.GetProperty().SetColor(0,0,1)
+
+    self.leftShoeActor = vtk.vtkActor()
+    self.leftShoeActor.SetMapper(leftShoeMapper)
+    self.leftShoeActor.GetProperty().SetColor(1,0,0)
+
+    self.rightShoeActor = vtk.vtkActor()
+    self.rightShoeActor.SetMapper(rightShoeMapper)
+    self.rightShoeActor.GetProperty().SetColor(0,1,0)
+
+    # Renderer
+    self.humanModelRenderers[sliceViewName] = vtk.vtkRenderer()
+    ren = self.humanModelRenderers[sliceViewName]
+
+    # assign actor to the renderer
+    ren.AddActor(self.humanActor)
+    ren.AddActor(self.shortsActor)
+    ren.AddActor(self.leftShoeActor)
+    ren.AddActor(self.rightShoeActor)
+    ren.SetViewport(0.8,0,1,.3)
+    rw = self.sliceViews[sliceViewName].renderWindow()
+
+    backgroundLayer = sliceLogic.GetBackgroundLayer()
+    sliceNode = backgroundLayer.GetSliceNode()
+    m = sliceNode.GetXYToRAS()
+
+    self.cameras[sliceViewName] = vtk.vtkCamera()
+    '''
+    if self.showHumanModelCheckBox.checked:
+      camera = self.cameras[sliceViewName]
+
+      x = np.matrix([[m.GetElement(0,0),m.GetElement(0,1),m.GetElement(0,2)],
+          [m.GetElement(1,0),m.GetElement(1,1),m.GetElement(1,2)],
+          [m.GetElement(2,0),m.GetElement(2,1),m.GetElement(2,2)]])
+      y = np.array([0,0,300])
+      position = np.inner(x,y)
+      camera.SetPosition(-position[0,0],-position[0,1],-position[0,2])
+      n = np.array([0,1,0])
+      viewUp = np.inner(x,n)
+      camera.SetViewUp(viewUp[0,0],viewUp[0,1],viewUp[0,2])
+
+      #ren.PreserveDepthBufferOff()
+      #print ren.GetPreserveDepthBuffer()
+      #print 'transparent',ren.Transparent()
+      ren.SetActiveCamera(camera)
+      rw.AddRenderer(ren)
+    '''
 
   def updateCornerAnnotations(self,caller,event):
     sliceViewNames = self.layoutManager.sliceViewNames()
@@ -385,51 +607,153 @@ class DICOMAnnotationsWidget:
     if self.sliceViews[self.currentSliceViewName]:
 
       viewWidth = self.sliceViews[self.currentSliceViewName].width
+      #print 'viewWidth is: ', viewWidth
       viewHeight = self.sliceViews[self.currentSliceViewName].height
+      rasToXY = vtk.vtkMatrix4x4()
       m = sliceNode.GetXYToRAS()
-      scalingFactor = " mm"
+      rasToXY.DeepCopy(m)
+      rasToXY.Invert()
+      #print rasToXY
+      scalingFactorString = " mm"
+
+      #print rasToXY
+      # TODO: Fix the bug
+      scalingFactor = 1
+      import math
+      scalingFactor = math.sqrt( rasToXY.GetElement(0,0)**2 + 
+          rasToXY.GetElement(0,1)**2 +rasToXY.GetElement(0,2) **2 )
+
+      #rulerArea = viewWidth/scalingFactor/3
+      rulerArea = viewWidth/scalingFactor/7
+      import numpy as np
+      rulerSizesArray = np.array([1,5,10,50,100])
+      index = np.argmin(np.abs(rulerSizesArray- rulerArea))
+
+      '''
       if self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Axial':
-        scalingFactor = str("%.1f"%(m.GetElement(1,1)*viewWidth/5))+" mm"
+        scalingFactor = rasToXY.GetElement(1,1)
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Sagittal':
-        scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
+        scalingFactor = rasToXY.GetElement(2,1)
       elif self.sliceWidgets[self.currentSliceViewName].sliceOrientation == 'Coronal':
-        scalingFactor = str("%.1f"%(m.GetElement(2,1)*viewWidth/5))+" mm"
+        scalingFactor = rasToXY.GetElement(2,1)
+      '''
 
-      sliceOrientation = self.sliceWidgets[self.currentSliceViewName].sliceOrientation
-      rightMarker = self.sliceRightOrientaionMarker[self.currentSliceViewName]
-      topMarker = self.sliceTopOrientaionMarker[self.currentSliceViewName]
-      if sliceOrientation == 'Axial':
-        rightMarker.SetInput('R')
-        topMarker.SetInput('A')
-      elif sliceOrientation == 'Sagittal':
-        rightMarker.SetInput('P')
-        topMarker.SetInput('S')
-      elif sliceOrientation == 'Coronal':
-        rightMarker.SetInput('R')
-        topMarker.SetInput('S')
+      if rulerSizesArray[index]/10 > 1:
+        scalingFactorString = str(int(rulerSizesArray[index]/10))+" cm"
+      else:
+        scalingFactorString = str(rulerSizesArray[index])+" mm"
 
-      rightMarker.SetDisplayPosition(viewWidth-30,viewHeight/2)
-      topMarker.SetDisplayPosition(viewWidth/2,viewHeight-25)
+      RASRulerSize = rulerSizesArray[index]
 
       pts = self.points[sliceViewName]
-      pts.SetPoint(0,[viewWidth/2.5,10, 0])
-      pts.SetPoint(1,[viewWidth/2.5,17, 0])
-      pts.SetPoint(2,[viewWidth-viewWidth/2.5,10, 0])
-      pts.SetPoint(3,[viewWidth-viewWidth/2.5,17, 0])
+      pts.SetPoint(0,[(viewWidth-RASRulerSize*scalingFactor)/2,10, 0])
+      pts.SetPoint(1,[(viewWidth-RASRulerSize*scalingFactor)/2,20, 0])
+      pts.SetPoint(2,[(viewWidth-RASRulerSize*scalingFactor/2)/2,10, 0])
+      pts.SetPoint(3,[(viewWidth-RASRulerSize*scalingFactor/2)/2,17, 0])
+      pts.SetPoint(4,[viewWidth/2,10, 0])
+      pts.SetPoint(5,[viewWidth/2,20, 0])
+      pts.SetPoint(6,[(viewWidth+RASRulerSize*scalingFactor/2)/2,10, 0])
+      pts.SetPoint(7,[(viewWidth+RASRulerSize*scalingFactor/2)/2,17, 0])
+      pts.SetPoint(8,[(viewWidth+RASRulerSize*scalingFactor)/2,10, 0])
+      pts.SetPoint(9,[(viewWidth+RASRulerSize*scalingFactor)/2,20, 0])
+      #print [(viewWidth-RASRulerSize*scalingFactor)/2,10, 0]
+      #print scalingFactor
       textActor = self.scalingBarTextActors[self.currentSliceViewName]
-      textActor.SetInput(scalingFactor)
-      textActor.SetDisplayPosition(viewWidth-viewWidth/2.5+10,7)
 
-      if self.showScalingBarCheckBox.checked:
-        self.renderers[self.currentSliceViewName].AddActor(self.scalingBarActors[self.currentSliceViewName])
+      textActor.SetInput(scalingFactorString)
+
+      #NOTE: changed
+      textActor.SetDisplayPosition(int((viewWidth+RASRulerSize*scalingFactor)/2)+10,7)
+
+      self.minimumWidthForScalingRuler = 300
+
+      #NOTE
+      scalarBAr = self.colorScalarBars[self.currentSliceViewName]
+      renderer = self.renderers[self.currentSliceViewName]
+      #scalarBAr.SetWidth(20)
+      #scalarBAr.SetHeight(60)
+      if ( backgroundVolume != None):
+        vdn = backgroundVolume.GetDisplayNode()
+        vcn = vdn.GetColorNode()
+        lut = vcn.GetLookupTable()
+        #scalarBAr.SetLookupTable(lut)
+        print scalarBAr.GetPosition()
+        print scalarBAr.GetPosition2()
+        #scalarBAr.SetPosition(9/10*viewWidth,2/5*viewHeight)
+        #scalarBAr.SetPosition2(9/10*viewWidth+10,3/5*viewHeight)
+        #renderer.AddActor2D(scalarBAr)
+        #scalarBAr.SetTitle("Title")
+        lut = vcn.GetLookupTable()
+        lut2 = vtk.vtkLookupTable()
+        lut2.DeepCopy(lut)
+        width = vtk.mutable(0)
+        level = vtk.mutable(0)
+        rangeLow = vtk.mutable(0)
+        rangeHigh = vtk.mutable(0)
+        sliceLogic.GetBackgroundWindowLevelAndRange(width,level,rangeLow,rangeHigh)
+        lut2.SetRange(int(level-width/2),int(level+width/2))
+        scalarBAr.SetLookupTable(lut2)
+
+      if self.showScalingBarCheckBox.checked and \
+          viewWidth > self.minimumWidthForScalingRuler and\
+         rulerArea>0.5 and rulerArea<500 :
+        self.renderers[self.currentSliceViewName].AddActor(
+            self.scalingBarActors[self.currentSliceViewName])
         self.renderers[self.currentSliceViewName].AddActor(textActor)
-        self.renderers[self.currentSliceViewName].AddActor(rightMarker)
-        self.renderers[self.currentSliceViewName].AddActor(topMarker)
+        #NOTE
+        self.renderers[self.currentSliceViewName].AddActor(
+            self.colorScalarBars[self.currentSliceViewName])
+        #self.renderers[self.currentSliceViewName].AddActor(rightMarker)
+        #self.renderers[self.currentSliceViewName].AddActor(topMarker)
       else:
-        self.renderers[self.currentSliceViewName].RemoveActor(self.scalingBarActors[self.currentSliceViewName])
+        self.renderers[self.currentSliceViewName].RemoveActor(
+            self.scalingBarActors[self.currentSliceViewName])
+        # TODO: Add a statement to check the existance of textActor
         self.renderers[self.currentSliceViewName].RemoveActor(textActor)
-        self.renderers[self.currentSliceViewName].RemoveActor(rightMarker)
-        self.renderers[self.currentSliceViewName].RemoveActor(topMarker)
+        #NOTE
+        self.renderers[self.currentSliceViewName].RemoveActor(
+            self.colorScalarBars[self.currentSliceViewName])
+        #self.renderers[self.currentSliceViewName].RemoveActor(rightMarker)
+        #self.renderers[self.currentSliceViewName].RemoveActor(topMarker)
+   
+      ren = self.humanModelRenderers[sliceViewName]
+      rw = self.sliceViews[sliceViewName].renderWindow()
+
+      if self.showHumanModelCheckBox.checked:
+        # assign actor to the renderer
+        ren.AddActor(self.humanActor)
+        ren.AddActor(self.shortsActor)
+        ren.AddActor(self.leftShoeActor)
+        ren.AddActor(self.rightShoeActor)
+        backgroundLayer = sliceLogic.GetBackgroundLayer()
+        sliceNode = backgroundLayer.GetSliceNode()
+        m = sliceNode.GetXYToRAS()
+        self.cameras[sliceViewName] = vtk.vtkCamera()
+        camera = self.cameras[sliceViewName]
+        x = np.matrix([[m.GetElement(0,0),m.GetElement(0,1),m.GetElement(0,2)],
+            [m.GetElement(1,0),m.GetElement(1,1),m.GetElement(1,2)],
+            [m.GetElement(2,0),m.GetElement(2,1),m.GetElement(2,2)]])
+        y = np.array([0,0,300])
+        position = np.inner(x,y)
+        print x
+        #position = position-((np.max(position))-350)
+        camera.SetPosition(-position[0,0],-position[0,1],-position[0,2])
+        n = np.array([0,1,0])
+        viewUp = np.inner(x,n)
+        print viewUp
+        camera.SetViewUp(viewUp[0,0],viewUp[0,1],viewUp[0,2])
+
+        #ren.PreserveDepthBufferOff()
+        #print ren.GetPreserveDepthBuffer()
+        #print 'transparent',ren.Transparent()
+        ren.SetActiveCamera(camera)
+        rw.AddRenderer(ren)
+      else:
+        ren.RemoveActor(self.humanActor)
+        ren.RemoveActor(self.shortsActor)
+        ren.RemoveActor(self.leftShoeActor)
+        ren.RemoveActor(self.leftShoeActor)
+        rw.RemoveRenderer(ren)
 
       # Both background and foregraound
       if ( backgroundVolume != None and foregroundVolume != None):
